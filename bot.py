@@ -1,6 +1,7 @@
 from llm_scorer import score_market
 from market_data import (
     choose_candidate_markets,
+    enrich_market_with_orderbook,
     extract_markets_from_events,
     fetch_active_events,
 )
@@ -12,22 +13,20 @@ from risk_engine import (
 
 
 def build_market_data_for_scorer(market: dict) -> dict:
-    prices = market.get("outcome_prices", [])
-
-    mid_price = 0.5
-    if prices:
-        try:
-            mid_price = float(prices[0])
-        except (TypeError, ValueError):
-            mid_price = 0.5
+    orderbook_features = market["orderbook_features"]
 
     return {
-        "mid_price": mid_price,
-        "spread": 0.04,  # placeholder until we read real order book
+        "mid_price": orderbook_features["mid_price"],
+        "spread": orderbook_features["spread"],
+        "best_bid": orderbook_features["best_bid"],
+        "best_ask": orderbook_features["best_ask"],
+        "bid_depth": orderbook_features["bid_depth"],
+        "ask_depth": orderbook_features["ask_depth"],
+        "orderbook_imbalance": orderbook_features["orderbook_imbalance"],
         "volume_24h": market["volume_24h"],
         "liquidity": market["liquidity"],
-        "volatility_5m": 0.02,  # placeholder until price history exists
-        "volatility_1h": 0.04,  # placeholder until price history exists
+        "volatility_5m": 0.02,
+        "volatility_1h": 0.04,
         "days_to_resolution": market["days_to_resolution"],
     }
 
@@ -41,7 +40,7 @@ def main() -> None:
         print("No suitable markets found.")
         return
 
-    market = candidates[0]
+    market = enrich_market_with_orderbook(candidates[0])
     market_data = build_market_data_for_scorer(market)
 
     market_question = market["question"]
@@ -73,6 +72,12 @@ def main() -> None:
     print("Volume 24h:", market["volume_24h"])
     print("Liquidity:", market["liquidity"])
     print("Outcome prices:", market["outcome_prices"])
+    print("Best bid:", market_data["best_bid"])
+    print("Best ask:", market_data["best_ask"])
+    print("Real spread:", market_data["spread"])
+    print("Bid depth:", market_data["bid_depth"])
+    print("Ask depth:", market_data["ask_depth"])
+    print("Orderbook imbalance:", market_data["orderbook_imbalance"])
     print("=" * 80)
     print("Mode:", mode.value)
     print("Risk score:", risk_score)
