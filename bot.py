@@ -2,6 +2,9 @@ from config import (
     DEFAULT_VOLATILITY_1H,
     DEFAULT_VOLATILITY_5M,
     EVENT_FETCH_LIMIT,
+    MAX_SPREAD,
+    MIN_ASK_DEPTH,
+    MIN_BID_DEPTH,
     MIN_DAYS_TO_RESOLUTION,
     MIN_LIQUIDITY,
     MIN_SPREAD,
@@ -41,10 +44,34 @@ def build_market_data_for_scorer(market: dict) -> dict:
 
 
 def passes_basic_trade_filter(market_data: dict) -> bool:
+    if market_data["best_bid"] <= 0 or market_data["best_ask"] <= 0:
+        print("Skipped: empty orderbook")
+        print("Best bid:", market_data["best_bid"])
+        print("Best ask:", market_data["best_ask"])
+        return False
+
     if market_data["spread"] < MIN_SPREAD:
         print("Skipped: spread too small")
         print("Spread:", market_data["spread"])
         print("Minimum spread:", MIN_SPREAD)
+        return False
+
+    if market_data["spread"] > MAX_SPREAD:
+        print("Skipped: spread too large")
+        print("Spread:", market_data["spread"])
+        print("Maximum spread:", MAX_SPREAD)
+        return False
+
+    if market_data["bid_depth"] < MIN_BID_DEPTH:
+        print("Skipped: bid depth too low")
+        print("Bid depth:", market_data["bid_depth"])
+        print("Minimum bid depth:", MIN_BID_DEPTH)
+        return False
+
+    if market_data["ask_depth"] < MIN_ASK_DEPTH:
+        print("Skipped: ask depth too low")
+        print("Ask depth:", market_data["ask_depth"])
+        print("Minimum ask depth:", MIN_ASK_DEPTH)
         return False
 
     return True
