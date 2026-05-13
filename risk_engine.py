@@ -1,5 +1,29 @@
+
 from enum import Enum
 from typing import Any
+
+from config import (
+    AMBIGUITY_QUOTE_MULTIPLIER,
+    BASE_QUOTE_WIDTH,
+    HIGH_EVENT_SENSITIVITY,
+    HIGH_NEWS_RISK,
+    INFORMATION_ASYMMETRY_QUOTE_MULTIPLIER,
+    MAX_NEWS_RISK_OFF,
+    MAX_QUOTE_WIDTH,
+    MAX_RESOLUTION_AMBIGUITY,
+    MIN_DAYS_TO_RESOLUTION,
+    MIN_LIQUIDITY_FOR_TRADING,
+    MIN_SPREAD,
+    MIN_TRADEABILITY,
+    NEWS_RISK_QUOTE_MULTIPLIER,
+    RISK_WEIGHT_AMBIGUITY,
+    RISK_WEIGHT_EVENT,
+    RISK_WEIGHT_INFORMATION_ASYMMETRY,
+    RISK_WEIGHT_MANIPULATION,
+    RISK_WEIGHT_NEWS,
+    RISK_WEIGHT_VOLATILITY,
+    VOLATILITY_QUOTE_MULTIPLIER,
+)
 
 
 class TradingMode(str, Enum):
@@ -19,25 +43,25 @@ def choose_trading_mode(scores: dict[str, Any], market_data: dict[str, Any]) -> 
     spread = market_data.get("spread", 0)
     liquidity = market_data.get("liquidity", 0)
 
-    if days_to_resolution < 14:
+    if days_to_resolution < MIN_DAYS_TO_RESOLUTION:
         return TradingMode.OFF
 
-    if resolution_ambiguity > 0.65:
+    if resolution_ambiguity > MAX_RESOLUTION_AMBIGUITY:
         return TradingMode.OFF
 
-    if tradeability < 0.40:
+    if tradeability < MIN_TRADEABILITY:
         return TradingMode.OFF
 
-    if news_risk > 0.88:
+    if news_risk > MAX_NEWS_RISK_OFF:
         return TradingMode.OFF
 
-    if liquidity < 10_000:
+    if liquidity < MIN_LIQUIDITY_FOR_TRADING:
         return TradingMode.OFF
 
-    if spread < 0.02:
+    if spread < MIN_SPREAD:
         return TradingMode.OFF
 
-    if news_risk > 0.70 or event_sensitivity > 0.70:
+    if news_risk > HIGH_NEWS_RISK or event_sensitivity > HIGH_EVENT_SENSITIVITY:
         return TradingMode.WIDE_MARKET_MAKE
 
     return TradingMode.NORMAL_MARKET_MAKE
@@ -47,12 +71,12 @@ def calculate_risk_score(scores: dict[str, Any], market_data: dict[str, Any]) ->
     volatility_5m = market_data.get("volatility_5m", 0)
 
     risk_score = (
-        0.30 * scores["news_risk"]
-        + 0.20 * scores["event_sensitivity"]
-        + 0.20 * scores["resolution_ambiguity"]
-        + 0.15 * scores["information_asymmetry"]
-        + 0.10 * scores["manipulation_risk"]
-        + 0.05 * min(volatility_5m * 10, 1)
+        RISK_WEIGHT_NEWS * scores["news_risk"]
+        + RISK_WEIGHT_EVENT * scores["event_sensitivity"]
+        + RISK_WEIGHT_AMBIGUITY * scores["resolution_ambiguity"]
+        + RISK_WEIGHT_INFORMATION_ASYMMETRY * scores["information_asymmetry"]
+        + RISK_WEIGHT_MANIPULATION * scores["manipulation_risk"]
+        + RISK_WEIGHT_VOLATILITY * min(volatility_5m * 10, 1)
     )
 
     return round(risk_score, 3)
@@ -61,13 +85,13 @@ def calculate_risk_score(scores: dict[str, Any], market_data: dict[str, Any]) ->
 def calculate_quote_width(scores: dict[str, Any], market_data: dict[str, Any]) -> float:
     volatility_5m = market_data.get("volatility_5m", 0)
 
-    width = 0.015
-    width += volatility_5m * 2.5
-    width += scores["news_risk"] * 0.03
-    width += scores["resolution_ambiguity"] * 0.02
-    width += scores["information_asymmetry"] * 0.015
+    width = BASE_QUOTE_WIDTH
+    width += volatility_5m * VOLATILITY_QUOTE_MULTIPLIER
+    width += scores["news_risk"] * NEWS_RISK_QUOTE_MULTIPLIER
+    width += scores["resolution_ambiguity"] * AMBIGUITY_QUOTE_MULTIPLIER
+    width += scores["information_asymmetry"] * INFORMATION_ASYMMETRY_QUOTE_MULTIPLIER
 
-    return round(min(width, 0.12), 3)
+    return round(min(width, MAX_QUOTE_WIDTH), 3)
 
 
 if __name__ == "__main__":
