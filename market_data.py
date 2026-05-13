@@ -7,6 +7,8 @@ import requests
 
 GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events"
 
+CLOB_BOOK_URL = "https://clob.polymarket.com/book"
+
 
 def safe_float(value: Any, default: float = 0.0) -> float:
     try:
@@ -153,6 +155,89 @@ def print_market_summary(market: dict[str, Any]) -> None:
     print("CLOB token IDs:", market["clob_token_ids"])
     print("URL:", market["url"])
 
+def fetch_order_book(token_id: str) -> dict[str, Any]:
+    params = {"token_id": token_id}
+
+    response = requests.get(CLOB_BOOK_URL, params=params, timeout=20)
+    response.raise_for_status()
+
+    data = response.json()
+
+    if not isinstance(data, dict):
+        raise ValueError("Unexpected CLOB orderbook response format")
+
+    return data
+
+
+def calculate_orderbook_features(order_book: dict[str, Any]) -> dict[str, float]:
+    bids = order_book.get("bids", [])
+    asks = order_book.get("asks", [])
+
+    if not bids or not asks:
+        return {
+            "best_bid": 0.0,
+            "best_ask": 0.0,
+            "mid_price": 0.5,
+            "spread": 1.0,
+            "bid_depth": 0.0,
+            "ask_depth": 0.0,
+            "orderbook_imbalance": 0.5,
+        }
+
+    bid_prices = [safe_float(level.get("price")) for level in bids]
+    ask_prices = [safe_float(level.get("price")) for level in asks]
+
+    best_bid = max(bid_prices)
+    best_ask = min(ask_prices)
+
+    bid_depth = sum(
+        safe_float(level.get("price")) * safe_float(level.get("size"))
+        for level in bids[:10]
+    )
+
+    ask_depth = sum(
+        safe_float(level.get("price")) * safe_float(level.get("size"))
+        for level in asks[:10]
+    )
+
+    total_depth = bid_depth + ask_depth
+
+    if total_depth > 0:
+        orderbook_imbalance = bid_depth / total_depth
+    else:
+        orderbook_imbalance = 0.5
+
+    mid_price = (best_bid + best_ask) / 2
+    spread = best_ask - best_bid
+
+    return {
+        "best_bid": round(best_bid, 4),
+        "best_ask": round(best_ask, 4),
+        "mid_price": round(mid_price, 4),
+        "spread": round(spread, 4),
+        "bid_depth": round(bid_depth, 2),
+        "ask_depth": round(ask_depth, 2),
+        "orderbook_imbalance": round(orderbook_imbalance, 3),
+    }
+
+
+def enrich_market_with_orderbook(market: dict[str, Any]) -> dict[str, Any]:
+    token_ids = market.get("clob_token_ids", [])
+
+    if not token_ids:
+        raise ValueError("Market has no CLOB token IDs")
+
+    yes_token_id = str(token_ids[0])
+
+    order_book = fetch_order_book(yes_token_id)
+    features = calculate_orderbook_features(order_book)
+
+    enriched = market.copy()
+    enriched["yes_token_id"] = yes_token_id
+    enriched["orderbook"] = order_book
+    enriched["orderbook_features"] = features
+
+    return enriched
 
 if __name__ == "__main__":
     events = fetch_active_events(limit=50)
@@ -165,3 +250,9 @@ if __name__ == "__main__":
 
     for candidate in candidates[:5]:
         print_market_summary(candidate)
+
+        try:
+            enriched = enrich_market_with_orderbook(candidate)
+            print("Orderbook features:", enriched["orderbook_features"])
+        except Exception as error:
+            print("Could not fetch orderbook:", error)
