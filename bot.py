@@ -1,3 +1,12 @@
+from config import (
+    DEFAULT_VOLATILITY_1H,
+    DEFAULT_VOLATILITY_5M,
+    EVENT_FETCH_LIMIT,
+    MIN_DAYS_TO_RESOLUTION,
+    MIN_LIQUIDITY,
+    MIN_SPREAD,
+    MIN_VOLUME_24H,
+)
 from llm_scorer import score_market
 from market_data import (
     choose_candidate_markets,
@@ -25,23 +34,64 @@ def build_market_data_for_scorer(market: dict) -> dict:
         "orderbook_imbalance": orderbook_features["orderbook_imbalance"],
         "volume_24h": market["volume_24h"],
         "liquidity": market["liquidity"],
-        "volatility_5m": 0.02,
-        "volatility_1h": 0.04,
+        "volatility_5m": DEFAULT_VOLATILITY_5M,
+        "volatility_1h": DEFAULT_VOLATILITY_1H,
         "days_to_resolution": market["days_to_resolution"],
     }
 
 
+def passes_basic_trade_filter(market_data: dict) -> bool:
+    if market_data["spread"] < MIN_SPREAD:
+        print("Skipped: spread too small")
+        print("Spread:", market_data["spread"])
+        print("Minimum spread:", MIN_SPREAD)
+        return False
+
+    return True
+
+
 def main() -> None:
-    events = fetch_active_events(limit=50)
+    events = fetch_active_events(limit=EVENT_FETCH_LIMIT)
     markets = extract_markets_from_events(events)
-    candidates = choose_candidate_markets(markets)
+    candidates = choose_candidate_markets(
+        markets,
+        min_liquidity=MIN_LIQUIDITY,
+        min_volume_24h=MIN_VOLUME_24H,
+        min_days_to_resolution=MIN_DAYS_TO_RESOLUTION,
+    )
 
     if not candidates:
         print("No suitable markets found.")
         return
 
-    market = enrich_market_with_orderbook(candidates[0])
-    market_data = build_market_data_for_scorer(market)
+    selected_market = None
+    selected_market_data = None
+
+    for candidate in candidates:
+        try:
+            market = enrich_market_with_orderbook(candidate)
+            market_data = build_market_data_for_scorer(market)
+        except Exception as error:
+            print("Skipped: could not load orderbook")
+            print("Question:", candidate.get("question", "Unknown question"))
+            print("Error:", error)
+            continue
+
+        print("Checking market:", market["question"])
+
+        if not passes_basic_trade_filter(market_data):
+            continue
+
+        selected_market = market
+        selected_market_data = market_data
+        break
+
+    if selected_market is None or selected_market_data is None:
+        print("No candidate market passed the basic trade filter.")
+        return
+
+    market = selected_market
+    market_data = selected_market_data
 
     market_question = market["question"]
     resolution_criteria = market.get("description") or "No resolution criteria provided."
