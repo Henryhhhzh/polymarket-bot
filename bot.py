@@ -9,6 +9,7 @@ from config import (
     MIN_LIQUIDITY,
     MIN_SPREAD,
     MIN_VOLUME_24H,
+    PAPER_ORDER_SIZE,
 )
 from llm_scorer import score_market
 from market_data import (
@@ -17,6 +18,7 @@ from market_data import (
     extract_markets_from_events,
     fetch_active_events,
 )
+from paper_trader import calculate_paper_quote, print_paper_quote
 from risk_engine import (
     calculate_quote_width,
     calculate_risk_score,
@@ -162,6 +164,18 @@ def main() -> None:
     print("=" * 80)
     print("LLM scores:")
     print(scores.model_dump_json(indent=2))
+
+    if mode.value != "OFF":
+        quote = calculate_paper_quote(
+            mid_price=market_data["mid_price"],
+            quote_width=quote_width,
+            order_size=PAPER_ORDER_SIZE,
+            mode=mode.value,
+        )
+        print_paper_quote(quote)
+    else:
+        print("=" * 80)
+        print("No paper quote created because mode is OFF.")
 
 
 if __name__ == "__main__":
